@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron . --remote-debugging-port=9222",
-    "build": "electron-packager . AkilliOynatici --platform=win32 --arch=x64 --out=dist --overwrite"
+    "build": "electron-builder --win"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +20,11 @@
   "build": {
     "appId": "com.vega.echoplay",
     "productName": "EchoPlay",
+    "publish": [{
+      "provider": "github",
+      "owner": "Arcturus003",
+      "repo": "EchoPlay"
+    }],
     "win": {
       "target": [
         "nsis",
@@ -46,5 +51,8 @@
         "role": "Viewer"
       }
     ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

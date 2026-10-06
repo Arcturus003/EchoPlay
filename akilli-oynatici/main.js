@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 app.disableHardwareAcceleration();
 
@@ -44,7 +45,47 @@ function createWindow () {
   mainWindow.loadFile('index.html');
 }
 
-app.whenReady().then(() => { createWindow(); });
+app.whenReady().then(() => {
+  createWindow();
+
+  autoUpdater.autoDownload = false;
+
+  autoUpdater.on('error', (err) => {
+    console.error('Update error:', err);
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Available',
+      message: `A new version is available. Do you want to download it now?`,
+      buttons: ['Yes', 'No']
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.downloadUpdate().catch(err => {
+          console.error('Error downloading update:', err);
+        });
+      }
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded. Do you want to restart and install now?',
+      buttons: ['Restart', 'Later']
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.checkForUpdates().catch(err => {
+    console.error('Error checking for updates:', err);
+  });
+});
 app.on('window-all-closed', function () { if (process.platform !== 'darwin') app.quit() });
 
 let isMini = false;
