@@ -1,0 +1,50 @@
+{
+  "name": "echoplay",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron . --remote-debugging-port=9222",
+    "build": "electron-packager . AkilliOynatici --platform=win32 --arch=x64 --out=dist --overwrite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.vega.echoplay",
+    "productName": "EchoPlay",
+    "win": {
+      "target": [
+        "nsis",
+        "dir"
+      ]
+    },
+    "fileAssociations": [
+      {
+        "ext": "mp4",
+        "name": "MP4 Video Dosyası",
+        "description": "EchoPlay MP4 Video",
+        "role": "Viewer"
+      },
+      {
+        "ext": "mkv",
+        "name": "MKV Video Dosyası",
+        "description": "EchoPlay MKV Video",
+        "role": "Viewer"
+      },
+      {
+        "ext": "m3u8",
+        "name": "M3U8 Çalma Listesi",
+        "description": "EchoPlay HLS Stream",
+        "role": "Viewer"
+      }
+    ]
+  }
+}

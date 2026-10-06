@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Benim Oynatıcım",
+  "version": "1.0",
+  "description": "Sayfadaki videoları kendi özel oynatıcımla açar.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "webRequest",
+    "declarativeNetRequest",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Videoyu Oynatıcımla Aç"
+  }
+}

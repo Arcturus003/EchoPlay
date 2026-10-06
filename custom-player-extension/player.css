@@ -1,0 +1,97 @@
+.custom-player-container {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  background: #111;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  margin: 20px auto;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.custom-player-video {
+  width: 100%;
+  display: block;
+}
+
+.custom-player-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  gap: 15px;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.custom-player-container:hover .custom-player-controls {
+  opacity: 1;
+}
+
+.custom-btn {
+  background: #ff0055;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.custom-btn:hover {
+  background: #ff3377;
+}
+
+.custom-progress-container {
+  flex-grow: 1;
+  background: rgba(255,255,255,0.3);
+  height: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  transition: height 0.1s;
+}
+
+.custom-progress-container:hover {
+  height: 12px;
+}
+
+.custom-progress-bar {
+  background: #ff0055;
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  position: relative;
+}
+
+.custom-progress-bar::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.custom-progress-container:hover .custom-progress-bar::after {
+  opacity: 1;
+}
+
+.custom-time-display {
+  color: white;
+  font-size: 13px;
+  min-width: 80px;
+  text-align: center;
+}

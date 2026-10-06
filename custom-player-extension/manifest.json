@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Custom Video Player",
+  "version": "1.0",
+  "description": "Girdiğiniz sitelerdeki standart videoları sizin özel video oynatıcınız ile değiştirir.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "css": ["player.css"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_title": "Custom Player",
+    "default_popup": "popup.html"
+  }
+}

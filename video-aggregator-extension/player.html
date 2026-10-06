@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoPlay</title>
+    <script src="hls.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="node_modules/@phosphor-icons/web/src/regular/style.css">
+    <link rel="stylesheet" type="text/css" href="node_modules/@phosphor-icons/web/src/bold/style.css">
+    <link rel="stylesheet" type="text/css" href="node_modules/@phosphor-icons/web/src/fill/style.css">
+    <link rel="stylesheet" type="text/css" href="node_modules/@phosphor-icons/web/src/duotone/style.css">
+    <style>
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background-color: #000; overflow: hidden; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        
+        .video-wrapper {
+            position: relative; width: 100%; height: 100%; 
+            background: #000; display: flex;
+            justify-content: center; align-items: center;
+        }
+        .video-wrapper.idle { cursor: none; }
+        video { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+        .big-play-btn {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); background: rgba(233, 30, 99, 0.85); 
+            color: white; border: none; border-radius: 50%;
+            width: 80px; height: 80px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            padding-left: 6px; transition: background 0.3s, transform 0.2s, opacity 0.3s;
+            z-index: 10; box-shadow: 0 0 25px rgba(233, 30, 99, 0.5);
+        }
+        .big-play-btn i { font-size: 40px; }
+        .big-play-btn:hover { background: rgba(233, 30, 99, 1); transform: translate(-50%, -50%) scale(1.1); }
+
+        .controls {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.95) 90%);
+            padding: 40px 25px 20px 25px; display: flex;
+            align-items: center; gap: 15px; 
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out; 
+            z-index: 20; opacity: 1; transform: translateY(0);
+        }
+        
+        .top-bar {
+            position: absolute; top: 0; left: 0; right: 0;
+            padding: 20px 25px; background: linear-gradient(rgba(0,0,0,0.8), transparent);
+            color: white; font-weight: 600; font-size: 17px;
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+            z-index: 20; pointer-events: none; 
+            opacity: 1; transform: translateY(0);
+            display: flex; justify-content: space-between; align-items: flex-start;
+        }
+        .top-bar span { pointer-events: auto; }
+        .top-actions { display: flex; gap: 10px; pointer-events: auto; }
+        .top-btn {
+            background: rgba(30, 30, 35, 0.6); border: 1px solid rgba(255,255,255,0.1); 
+            color: white; width: 38px; height: 38px; border-radius: 8px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 20px; cursor: pointer; transition: background 0.2s, transform 0.1s;
+            backdrop-filter: blur(5px);
+        }
+        .top-btn:hover { background: rgba(233, 30, 99, 0.9); transform: scale(1.05); }
+
+        .video-wrapper.idle .controls { opacity: 0 !important; transform: translateY(20px); pointer-events: none; }
+        .video-wrapper.idle .top-bar { opacity: 0 !important; transform: translateY(-20px); pointer-events: none; }
+
+        button.control-btn {
+            background: transparent; border: none; color: #fff;
+            cursor: pointer; font-size: 24px; transition: color 0.2s, transform 0.1s; 
+            display: flex; align-items: center; justify-content: center;
+            min-width: 30px; padding: 0;
+        }
+        button.control-btn:hover { color: #e91e63; transform: scale(1.1); }
+        
+        .skip-btn { position: relative; }
+        .skip-btn .skip-text {
+            position: absolute; font-size: 9px; font-weight: 900;
+            font-family: Arial, sans-serif; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; letter-spacing: -0.5px;
+        }
+        .control-text-btn { font-size: 14px !important; font-weight: bold; }
+
+        .progress-bar-container {
+            flex-grow: 1; height: 5px; background: rgba(255,255,255,0.2);
+            cursor: pointer; position: relative; border-radius: 4px;
+            transition: height 0.2s; margin: 0 10px;
+        }
+        .progress-bar-container:hover { height: 8px; }
+        .progress-bar {
+            height: 100%; background: #e91e63; width: 0%; border-radius: 4px; 
+            pointer-events: none; position: relative;
+        }
+        .progress-bar::after {
+            content: ''; position: absolute; right: -6px; top: 50%;
+            transform: translateY(-50%); width: 14px; height: 14px;
+            background: #fff; border-radius: 50%; box-shadow: 0 0 5px rgba(0,0,0,0.5); 
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .progress-bar-container:hover .progress-bar::after { opacity: 1; }
+        .time { color: #ddd; font-size: 14px; font-family: monospace; user-select: none; min-width: 90px; text-align: center; }
+
+        .volume-container { position: relative; display: flex; align-items: center; justify-content: center; }
+        .volume-popup {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); 
+            background: rgba(20, 20, 20, 0.95); border: 1px solid #333; border-radius: 8px;
+            padding: 10px 5px; display: none; flex-direction: column; align-items: center; 
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.7); z-index: 30; width: 35px;
+        }
+        .volume-popup::after { content: ''; position: absolute; top: 100%; left: 0; right: 0; height: 30px; background: transparent; }
+        .volume-container:hover .volume-popup { display: flex; }
+        .volume-text { color: #fff; font-size: 12px; font-weight: bold; text-align: center; margin-bottom: 5px; width: 100%; }
+        .volume-slider-wrapper { height: 90px; width: 20px; display: flex; justify-content: center; align-items: center; }
+        .volume-slider { width: 80px; height: 4px; -webkit-appearance: none; background: rgba(255, 255, 255, 0.3); border-radius: 2px; outline: none; cursor: pointer; transform: rotate(-90deg); }
+        .volume-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
+        .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #e91e63; cursor: pointer; margin-top: -5px; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        
+        .settings-container { position: relative; display: flex; align-items: center; }
+        .settings-menu {
+            position: absolute; bottom: 45px; right: -10px;
+            background: rgba(20, 20, 20, 0.95); border: 1px solid #333;
+            border-radius: 8px; display: none; 
+            flex-direction: column; overflow: hidden; box-shadow: 0 -5px 15px rgba(0,0,0,0.7);
+            z-index: 50;
+        }
+        .settings-menu.show { display: flex; }
+        .settings-header { padding: 8px 12px; font-size: 12px; font-weight: bold; color: #aaa; border-bottom: 1px solid #333; background: #111; text-align: center; }
+        .menu-btn { background: transparent; border: none; color: #ddd; padding: 10px 12px; text-align: left; font-size: 13px; cursor: pointer; width: 100%; transition: background 0.1s; display: flex; align-items: center; gap: 8px; }
+        .menu-btn:hover { background: #2a2a35; color: white; }
+        .menu-btn.active { color: #e91e63; font-weight: bold; }
+
+        @media (max-width: 768px) {
+            .controls { padding: 20px 15px 15px 15px; gap: 8px; }
+            button.control-btn { font-size: 20px; }
+            .time { font-size: 12px; min-width: 75px; }
+            .top-btn { width: 32px; height: 32px; font-size: 16px; }
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            .volume-popup { display: none !important; }
+            .progress-bar::after { opacity: 1; width: 12px; height: 12px; }
+            .progress-bar-container { height: 6px; }
+        }
+
+        .tap-feedback {
+            position: absolute; top: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.6); color: white; padding: 15px 25px;
+            border-radius: 30px; font-size: 18px; font-weight: bold;
+            pointer-events: none; z-index: 50; opacity: 1; transition: opacity 0.5s;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* Anime Tarzı Altyazı Tasarımı (Fansub Stili) */
+        ::cue {
+            background: transparent;
+            color: #ffffff;
+            font-size: 22px;
+            font-weight: bold;
+            font-family: 'Trebuchet MS', Arial, sans-serif;
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0px 3px 5px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+
+<div class="video-wrapper" id="videoWrapper">
+    <div class="top-bar">
+        <span id="videoTitle">Video Yükleniyor...</span>
+        <div class="top-actions">
+            <input type="file" id="localVideoInput" accept="video/*" style="display: none;">
+            <button class="top-btn" id="openLocalVideoBtn" title="Bilgisayardan Video Aç"><i class="ph-bold ph-folder-open"></i></button>
+            <button class="top-btn" id="smartAudioSyncBtn" title="Akıllı Ses Senkronu (Sesi dinler ve altyazıyı ilk sese eşitler)"><i class="ph-bold ph-waveform"></i></button>
+            <button class="top-btn" id="downloadBtn" title="Videoyu İndir"><i class="ph-bold ph-download-simple"></i></button>
+            <button class="top-btn" id="reportBtn" title="Sorun Bildir"><i class="ph-bold ph-warning"></i></button>
+        </div>
+    </div>
+    
+    <!-- BAŞLANGIÇ EKRANI (VLC TARZI) -->
+    <div id="splashScreen" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0f0f13; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10;">
+        <i class="ph-duotone ph-film-strip" style="font-size: 80px; color: #e91e63; margin-bottom: 20px;"></i>
+        <h2 style="color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; font-weight: 400;">Video Dosyasını Sürükleyip Bırakın</h2>
+        <p style="color: #888; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin-top: 10px;">veya Altyazı (.srt, .vtt) dosyasını ekleyin</p>
+        <button id="splashOpenBtn" style="margin-top: 25px; padding: 14px 30px; background: #e91e63; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;"><i class="ph-bold ph-folder-open"></i> Dosya Seç</button>
+    </div>
+
+    <video id="myPlayer" playsinline preload="auto"></video>
+    
+    <button class="big-play-btn" id="bigPlayBtn" style="display: none;"><i class="ph-fill ph-play"></i></button>
+
+    <!-- Sorun Bildir Modalı -->
+    <div id="reportModal" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(20,20,20,0.98); border:1px solid #444; padding:20px; border-radius:12px; z-index:100; color:white; width:280px; box-shadow:0 10px 40px rgba(0,0,0,0.9);">
+        <h3 style="margin-top:0; font-size:18px;">Sorun Bildir</h3>
+        <p style="font-size:13px; color:#ccc; margin-bottom:15px;">Bu videoyla ilgili ne tür bir sorun yaşıyorsunuz?</p>
+        <select id="reportReason" style="width:100%; padding:10px; margin-bottom:20px; background:#111; color:white; border:1px solid #555; border-radius:6px; outline:none; font-family:inherit;">
+            <option value="Video Açılmıyor">Video Açılmıyor / Yüklenmiyor</option>
+            <option value="Ses Kayması">Ses Kayması / Ses Yok</option>
+            <option value="Altyazı Sorunu">Altyazı Hatalı / Senkron Bozuk</option>
+            <option value="Telif Hakkı">Telif Hakkı (Copyright)</option>
+            <option value="Diğer">Diğer</option>
+        </select>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button  id="auto_btn_ynwr35c0w" style="padding:8px 15px; background:#333; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">İptal</button>
+            <button id="sendReportBtn" style="padding:8px 15px; background:#e91e63; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Gönder</button>
+        </div>
+    </div>
+
+    <div class="controls" id="controlsContainer">
+        <button class="control-btn" id="playPauseBtn" title="Oynat/Duraklat"><i class="ph-fill ph-play"></i></button>
+        
+        <button class="control-btn skip-btn" id="rewindBtn" title="10 Saniye Geri">
+            <i class="ph-bold ph-arrow-counter-clockwise"></i>
+            <span class="skip-text">10</span>
+        </button>
+        <button class="control-btn skip-btn" id="forwardBtn" title="10 Saniye İleri">
+            <i class="ph-bold ph-arrow-clockwise"></i>
+            <span class="skip-text">10</span>
+        </button>
+        
+        <div class="progress-bar-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="time" id="timeDisplay">0:00 / 0:00</div>
+        
+        <button class="control-btn" id="nextEpBtn" title="Sonraki Bölüm"><i class="ph-fill ph-skip-forward"></i></button>
+
+        <!-- Dinamik Altyazı Menüsü -->
+        <div class="settings-container" id="fansubContainer">
+            <button class="control-btn" id="fansubBtn" title="Altyazı Seçenekleri">
+                <i class="ph-bold ph-subtitles"></i>
+            </button>
+            <div class="settings-menu" id="fansubMenu" style="width: 200px; bottom: 45px; right: -30px;">
+                <div class="settings-header">Altyazı & Ses Seçenekleri</div>
+                <div id="fansubList">
+                    <button class="menu-btn" id="subAutoBtn" >
+                        <i class="ph-bold ph-sparkle"></i> Otomatik Altyazı
+                    </button>
+                    <button class="menu-btn" id="subHardsubBtn" >
+                        <i class="ph-bold ph-waveform"></i> Gömülü Video (Ses Atlama)
+                    </button>
+                    <button class="menu-btn active" id="subOffBtn" >
+                        <i class="ph-bold ph-eye-slash"></i> Altyazı Kapalı
+                    </button>
+                    
+                    <hr style="border: 1px solid #333; margin: 15px 0;">
+                    <div style="margin-bottom: 10px; font-size: 14px; color: #aaa;">Bulunamadıysa orijinal adıyla ara:</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                        <input type="text" id="manualSubSearchInput" placeholder="Örn: Assassination Classroom" style="width:100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-family: 'Montserrat', sans-serif;">
+                        <button id="manualSubSearchBtn" style="padding: 10px 15px; border-radius: 6px; border: none; background: #e91e63; color: #fff; cursor: pointer; transition: 0.2s;"><i class="ph-bold ph-magnifying-glass"></i></button>
+                    </div>
+
+                    <button class="menu-btn" id="uploadSubBtn" style="color: #4caf50;">
+                        <i class="ph-bold ph-upload-simple"></i> Altyazı Yükle (.srt)
+                    </button>
+                    <input type="file" id="subFileInput" accept=".srt,.vtt" style="display:none;">
+                </div>
+            </div>
+        </div>
+
+        <div class="volume-container" id="volumeContainer">
+            <button class="control-btn" id="muteBtn" title="Sesi Aç/Kapat">
+                <i class="ph-fill ph-speaker-high"></i>
+            </button>
+            <div class="volume-popup">
+                <span class="volume-text" id="volumeText">100</span>
+                <div class="volume-slider-wrapper">
+                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="1" step="0.05" value="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- Diyalog & Ses Atlama Butonu -->
+        <button class="control-btn" id="dialogSkipToggle" title="Akıllı Diyalog & Ses Atlama (Kapalı)" style="position: relative;">
+            <i class="ph-bold ph-quotes"></i>
+            <span id="vadIndicator" style="display:none; width:7px; height:7px; background:#00e676; border-radius:50%; position:absolute; top:2px; right:2px; box-shadow:0 0 6px #00e676; transition: background 0.2s;"></span>
+        </button>
+        <button class="control-btn" id="pipBtn" title="Resim İçinde Resim (PiP)"><i class="ph-bold ph-picture-in-picture"></i></button>
+
+        <div class="settings-container">
+            <button class="control-btn" id="settingsBtn" title="Ayarlar"><i class="ph-bold ph-gear-six"></i></button>
+            <div class="settings-menu" id="settingsMenu" style="width: 220px; padding: 0; overflow: hidden;">
+                <div style="display: flex; background: #1a1a1a; border-bottom: 1px solid #333;">
+                    <div id="tabQuality" style="flex: 1; text-align: center; padding: 12px 5px; cursor: pointer; color: #e91e63; font-weight: bold; border-bottom: 2px solid #e91e63; font-size: 14px; transition: 0.3s;">Kalite</div>
+                    <div id="tabSpeed" style="flex: 1; text-align: center; padding: 12px 5px; cursor: pointer; color: #aaa; font-weight: bold; border-bottom: 2px solid transparent; font-size: 14px; transition: 0.3s;">Hız</div>
+                </div>
+                <div style="padding: 10px;">
+                    <div id="qualityTabContent">
+                        <div id="qualityList"></div>
+                    </div>
+                    <div id="speedTabContent" style="display: none;">
+                        <button class="menu-btn"  id="auto_btn_gooaedhuw">0.5x</button>
+                        <button class="menu-btn"  id="auto_btn_vewaxt5ww">0.75x</button>
+                        <button class="menu-btn active"  id="auto_btn_n2o1f675z">1x (Normal)</button>
+                        <button class="menu-btn"  id="auto_btn_jx5wahvd9">1.25x</button>
+                        <button class="menu-btn"  id="auto_btn_1q85l5zgf">1.5x</button>
+                        <button class="menu-btn"  id="auto_btn_tsstenh3u">2x</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="control-btn" id="fullScreenBtn" title="Tam Ekran"><i class="ph-bold ph-corners-out"></i></button>
+    </div>
+</div>
+
+<script src="player.js"></script>
+</body>
+</html>
