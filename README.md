@@ -2,6 +2,10 @@
 
 EchoPlay, modern web teknolojilerini ve Electron.js'i temel alan, akıllı ses senkronizasyonuna sahip, yüksek performanslı ve çapraz platform (Masaüstü & Mobil Web) bir video oynatıcıdır.
 
+> [!WARNING]
+> **Erken Erişim Sürümü (Early Access)**
+> Bu uygulama şu an geliştirme aşamasındadır ve henüz tamamlanmamıştır. Bazı özellikler tam bir ticari ürün kadar kusursuz çalışmayabilir, nadir de olsa çökmeler veya küçük hatalarla karşılaşabilirsiniz.
+
 ## ✨ Öne Çıkan Özellikler
 
 - **🤖 Akıllı Senkron (Smart Sync):** VAD (Ses Etkinliği Tespiti) kullanarak altyazılarınızı tek tıkla videodaki seslere milisaniyesine kadar otomatik senkronize eder.
@@ -36,3 +40,4 @@ Eğer uygulamayı bilgisayarınıza kurmadan denemek veya telefonunuzdan erişme
 
 ---
 *Geliştirici:* Arcturus003
+
