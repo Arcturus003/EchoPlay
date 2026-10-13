@@ -1352,6 +1352,24 @@
         clearTimeout(idleTimer);
     });
 
+    video.addEventListener('error', () => {
+        if (video.error) {
+            console.warn('Video oynatma hatası:', video.error);
+            showFeedback('<i class="ph-bold ph-warning-circle"></i> Video formatı/codec desteklenmiyor', window.innerWidth / 2);
+        }
+    });
+
+    let codecCheckTimer = null;
+    video.addEventListener('loadedmetadata', () => {
+        if (codecCheckTimer) clearTimeout(codecCheckTimer);
+        codecCheckTimer = setTimeout(() => {
+            const isAudioOnly = /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(currentMeta?.rawTitle || currentMeta?.displayTitle || videoSrc || '');
+            if (video.videoWidth === 0 && video.videoHeight === 0 && videoSrc && !isAudioOnly) {
+                showFeedback('<i class="ph-bold ph-warning-circle"></i> Görüntü akışı çözülemedi (Desteklenmeyen codec)', window.innerWidth / 2);
+            }
+        }, 800);
+    });
+
     function formatTime(seconds) {
         if (isNaN(seconds)) return "0:00";
         const m = Math.floor(seconds / 60);
