@@ -1,6 +1,6 @@
-const http = require('http');
-const { spawn, execFile } = require('child_process');
-const path = require('path');
+const http = require('node:http');
+const { spawn, execFile } = require('node:child_process');
+const path = require('node:path');
 
 let server = null;
 let serverPort = null;
@@ -153,6 +153,9 @@ function startServer() {
                 const cleanup = () => {
                     activeFfmpegProcesses.delete(ffmpegProc);
                     try {
+                        if (ffmpegProc.stdout && !ffmpegProc.stdout.destroyed) {
+                            ffmpegProc.stdout.destroy();
+                        }
                         ffmpegProc.kill('SIGKILL');
                     } catch (e) {}
                 };

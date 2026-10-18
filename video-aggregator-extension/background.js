@@ -119,7 +119,7 @@ chrome.webRequest.onHeadersReceived.addListener(
               }
             }]
           }).then(() => {
-            if (tabId !== -1) addTabRule(tabId, ruleId);
+            if (tabId !== -1) RuleManager.addRule(tabId, ruleId);
           }).catch(console.error);
         }
       }
@@ -129,34 +129,52 @@ chrome.webRequest.onHeadersReceived.addListener(
   ["responseHeaders"]
 );
 
-const tabRuleIds = new Map();
-function addTabRule(tabId, ruleId) {
-  if (!tabRuleIds.has(tabId)) tabRuleIds.set(tabId, new Set());
-  tabRuleIds.get(tabId).add(ruleId);
-}
+const RuleManager = {
+  async addRule(tabId, ruleId) {
+    try {
+      const result = await chrome.storage.session.get('tabRuleIds');
+      const tabRules = result.tabRuleIds || {};
+      if (!tabRules[tabId]) tabRules[tabId] = [];
+      if (!tabRules[tabId].includes(ruleId)) {
+        tabRules[tabId].push(ruleId);
+        await chrome.storage.session.set({ tabRuleIds: tabRules });
+      }
+    } catch (e) {
+      console.error('[RuleManager] addRule hatası:', e);
+    }
+  },
 
-function clearTabRules(tabId) {
-  if (tabRuleIds.has(tabId)) {
-    const rulesToRemove = Array.from(tabRuleIds.get(tabId));
-    tabRuleIds.delete(tabId);
-    if (chrome.declarativeNetRequest && rulesToRemove.length > 0) {
-      chrome.declarativeNetRequest.updateDynamicRules({
-        removeRuleIds: rulesToRemove
-      }).catch(console.error);
+  async clearRules(tabId) {
+    try {
+      const result = await chrome.storage.session.get('tabRuleIds');
+      const tabRules = result.tabRuleIds || {};
+      const rulesToRemove = tabRules[tabId] || [];
+      if (rulesToRemove.length > 0) {
+        delete tabRules[tabId];
+        await chrome.storage.session.set({ tabRuleIds: tabRules });
+        if (chrome.declarativeNetRequest) {
+          await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: rulesToRemove
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[RuleManager] clearRules hatası:', e);
     }
   }
-}
+};
 
 // Tab kapandığında hafızayı ve dinamik ağ kurallarını temizle
 chrome.tabs.onRemoved.addListener((tabId) => {
   StorageManager.clearTab(tabId);
-  clearTabRules(tabId);
+  RuleManager.clearRules(tabId);
 });
 
 // Tab yeni bir sayfaya gittiğinde (örn: sonraki bölüm) eski videoları ve kuralları temizle
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'loading' || changeInfo.url) {
     StorageManager.clearTab(tabId);
-    clearTabRules(tabId);
+    RuleManager.clearRules(tabId);
   }
 });
+
