@@ -3,6 +3,7 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const streamServer = require('./stream-server');
 
 // GPU Donanım Hızlandırması ve Video Çözücü Desteği (H.264, HEVC / H.265 vb.)
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
@@ -87,6 +88,18 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle('probe-media', async (_event, filePath) => {
+    return await streamServer.probeMedia(filePath);
+  });
+
+  ipcMain.handle('get-transmux-url', async (_event, filePath, audioIndex, startTime) => {
+    return streamServer.getStreamUrl(filePath, audioIndex, startTime);
+  });
+
+  ipcMain.handle('extract-embedded-subtitle', async (_event, filePath, subtitleIndex) => {
+    return await streamServer.extractSubtitle(filePath, subtitleIndex);
+  });
+
   let isMini = false;
   let oldBounds = null;
   ipcMain.on('toggle-pip', () => {
@@ -103,7 +116,8 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    await streamServer.startServer();
     createWindow();
 
     autoUpdater.autoDownload = false;
@@ -146,6 +160,7 @@ if (!gotTheLock) {
   });
 
   app.on('window-all-closed', function () {
+    streamServer.stopServer();
     if (process.platform !== 'darwin') app.quit();
   });
 }

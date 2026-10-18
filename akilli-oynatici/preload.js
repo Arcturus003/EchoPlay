@@ -14,5 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return 'file:///' + filePath.replace(/\\/g, '/');
     }
   },
-  readLocalM3u8: (filePath) => ipcRenderer.invoke('read-local-m3u8', filePath)
+  readLocalM3u8: (filePath) => ipcRenderer.invoke('read-local-m3u8', filePath),
+  probeMedia: (filePath) => ipcRenderer.invoke('probe-media', filePath),
+  getTransmuxStreamUrl: (filePath, audioIndex, startTime) => ipcRenderer.invoke('get-transmux-url', filePath, audioIndex, startTime),
+  extractEmbeddedSubtitle: (filePath, subtitleIndex) => ipcRenderer.invoke('extract-embedded-subtitle', filePath, subtitleIndex)
 });

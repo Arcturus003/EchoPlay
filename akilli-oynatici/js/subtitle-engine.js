@@ -151,6 +151,74 @@
         return activeBlobUrl;
     }
 
+    function parseMatroskaTracks(buffer) {
+        const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer);
+        const tracks = { audio: [], subtitle: [] };
+        
+        let tracksPos = -1;
+        for (let i = 0; i < u8.length - 8; i++) {
+            if (u8[i] === 0x16 && u8[i+1] === 0x54 && u8[i+2] === 0xAE && u8[i+3] === 0x6B) {
+                for (let j = i + 4; j < Math.min(i + 40, u8.length); j++) {
+                    if (u8[j] === 0xAE) { tracksPos = i; break; }
+                }
+                if (tracksPos !== -1) break;
+            }
+        }
+        if (tracksPos === -1) return tracks;
+
+        let p = tracksPos + 4;
+        const maxEnd = Math.min(u8.length, tracksPos + 512 * 1024);
+
+        while (p < maxEnd - 4) {
+            if (u8[p] === 0xAE) {
+                let trackType = 0;
+                let codec = '';
+                let lang = 'und';
+                let name = '';
+
+                const entryLimit = Math.min(maxEnd, p + 1024);
+                for (let k = p; k < entryLimit - 4; k++) {
+                    if (u8[k] === 0xAE && k > p + 10) break;
+                    if (u8[k] === 0x83 && u8[k+1] === 0x81) {
+                        trackType = u8[k+2];
+                    }
+                    if (u8[k] === 0x86) {
+                        let sLen = u8[k+1] & 0x7F;
+                        if (sLen > 0 && sLen < 64) {
+                            let str = '';
+                            for (let x = 0; x < sLen; x++) str += String.fromCharCode(u8[k + 2 + x]);
+                            codec = str.replace(/\0/g, '').trim();
+                        }
+                    }
+                    if (u8[k] === 0x22 && u8[k+1] === 0xB5 && u8[k+2] === 0x9C) {
+                        let sLen = u8[k+3] & 0x7F;
+                        if (sLen > 0 && sLen < 16) {
+                            let str = '';
+                            for (let x = 0; x < sLen; x++) str += String.fromCharCode(u8[k + 4 + x]);
+                            lang = str.replace(/\0/g, '').trim();
+                        }
+                    }
+                    if (u8[k] === 0x53 && u8[k+1] === 0x6E) {
+                        let sLen = u8[k+2] & 0x7F;
+                        if (sLen > 0 && sLen < 64) {
+                            let str = '';
+                            for (let x = 0; x < sLen; x++) str += String.fromCharCode(u8[k + 3 + x]);
+                            name = str.replace(/\0/g, '').trim();
+                        }
+                    }
+                }
+
+                if (trackType === 2) {
+                    tracks.audio.push({ codec, name: name || ('Ses (' + lang.toUpperCase() + ')'), lang });
+                } else if (trackType === 17) {
+                    tracks.subtitle.push({ codec, name: name || ('Altyazı (' + lang.toUpperCase() + ')'), lang });
+                }
+            }
+            p++;
+        }
+        return tracks;
+    }
+
     window.SubtitleEngine = {
         parseTimestamp,
         formatVttTime,
@@ -159,7 +227,8 @@
         srtToVtt,
         generateVtt,
         adjustSync,
-        applyToVideo
+        applyToVideo,
+        parseMatroskaTracks
     };
 
 })(typeof window !== 'undefined' ? window : globalThis);

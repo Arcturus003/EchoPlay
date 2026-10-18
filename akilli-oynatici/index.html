@@ -227,35 +227,57 @@
         
         <button class="control-btn" id="nextEpBtn" title="Sonraki Bölüm"><i class="ph-fill ph-skip-forward"></i></button>
 
-        <!-- Dinamik Altyazı Menüsü -->
+        <!-- Birleşik Ses ve Altyazı Menüsü -->
         <div class="settings-container" id="fansubContainer">
-            <button class="control-btn" id="fansubBtn" title="Altyazı Seçenekleri">
-                <i class="ph-bold ph-subtitles"></i>
+            <button class="control-btn" id="fansubBtn" title="Ses ve Altyazı Seçenekleri">
+                <i class="ph-bold ph-sliders"></i>
             </button>
-            <div class="settings-menu" id="fansubMenu" style="width: 200px; bottom: 45px; right: -30px;">
-                <div class="settings-header">Altyazı & Ses Seçenekleri</div>
-                <div id="fansubList">
-                    <button class="menu-btn" id="subAutoBtn" onclick="setSubtitleMode('auto', this)">
-                        <i class="ph-bold ph-sparkle"></i> Otomatik Altyazı
-                    </button>
-                    <button class="menu-btn" id="subHardsubBtn" onclick="setSubtitleMode('hardsub', this)">
-                        <i class="ph-bold ph-waveform"></i> Gömülü Video (Ses Atlama)
-                    </button>
-                    <button class="menu-btn active" id="subOffBtn" onclick="setSubtitleMode('off', this)">
-                        <i class="ph-bold ph-eye-slash"></i> Altyazı Kapalı
-                    </button>
-                    
-                    <hr style="border: 1px solid #333; margin: 15px 0;">
-                    <div style="margin-bottom: 10px; font-size: 14px; color: #aaa;">Bulunamadıysa orijinal adıyla ara:</div>
-                    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
-                        <input type="text" id="manualSubSearchInput" placeholder="Örn: Assassination Classroom" style="width:100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-family: 'Montserrat', sans-serif;">
-                        <button id="manualSubSearchBtn" style="padding: 10px 15px; border-radius: 6px; border: none; background: #e91e63; color: #fff; cursor: pointer; transition: 0.2s;"><i class="ph-bold ph-magnifying-glass"></i></button>
+            <div class="settings-menu" id="fansubMenu" style="width: 380px; max-width: 92vw; bottom: 45px; right: -30px; padding: 12px;">
+                <div class="settings-header" style="margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; border-radius: 4px;">
+                    <span><i class="ph-bold ph-faders"></i> Ses ve Altyazı</span>
+                    <span id="activeAudioCodecBadge" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: #00e676;">Varsayılan</span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <!-- Sol Sütun: Ses Parçaları -->
+                    <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 8px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 6px; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                            <i class="ph-bold ph-speaker-high"></i> Ses Dili
+                        </div>
+                        <div id="audioTracksList" style="display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto;">
+                            <button class="menu-btn active" style="font-size: 12px; padding: 6px 8px;">Varsayılan Ses</button>
+                        </div>
                     </div>
 
-                    <button class="menu-btn" id="uploadSubBtn" style="color: #4caf50;">
-                        <i class="ph-bold ph-upload-simple"></i> Altyazı Yükle (.srt)
+                    <!-- Sağ Sütun: Altyazı Parçaları -->
+                    <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 8px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 6px; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                            <i class="ph-bold ph-subtitles"></i> Altyazı
+                        </div>
+                        <div id="subtitleTracksList" style="display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto;">
+                            <button class="menu-btn active" id="subOffBtn" onclick="setSubtitleMode('off', this)" style="font-size: 12px; padding: 6px 8px;">
+                                <i class="ph-bold ph-eye-slash"></i> Kapalı
+                            </button>
+                            <button class="menu-btn" id="subAutoBtn" onclick="setSubtitleMode('auto', this)" style="font-size: 12px; padding: 6px 8px;">
+                                <i class="ph-bold ph-sparkle"></i> Otomatik Ara
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alt Kısım: Hızlı Senkronizasyon & Yükleme -->
+                <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                    <button class="menu-btn" id="quickSyncTrackBtn" style="font-size: 12px; padding: 6px 10px; background: rgba(233,30,99,0.15); color: #ff4081; justify-content: center; font-weight: 600; border-radius: 4px;">
+                        <i class="ph-bold ph-sparkle"></i> Bu Parçayla Akıllı Senkronize Et (VAD)
                     </button>
-                    <input type="file" id="subFileInput" accept=".srt,.vtt" style="display:none;">
+                    <div style="display: flex; gap: 6px;">
+                        <input type="text" id="manualSubSearchInput" placeholder="Anime/Dizi adı..." style="flex:1; min-width:0; padding: 6px 8px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff; font-size: 11px;">
+                        <button id="manualSubSearchBtn" style="padding: 6px 10px; border-radius: 4px; border: none; background: #e91e63; color: #fff; cursor: pointer; font-size: 11px;"><i class="ph-bold ph-magnifying-glass"></i></button>
+                        <button class="menu-btn" id="uploadSubBtn" style="color: #4caf50; font-size: 11px; padding: 6px 8px; border-radius: 4px; width: auto; flex: none;">
+                            <i class="ph-bold ph-upload-simple"></i> Yükle
+                        </button>
+                        <input type="file" id="subFileInput" accept=".srt,.vtt" style="display:none;">
+                    </div>
                 </div>
             </div>
         </div>
@@ -771,6 +793,135 @@
         };
         reader.readAsArrayBuffer(file);
     });
+
+    // =========================================================================
+    // 🎛️ ÇOKLU SES & GÖMÜLÜ ALTYAZI YÖNETİMİ (AUDIO & SUBTITLE TRACKS)
+    // =========================================================================
+    let currentLocalVideoPath = '';
+    let currentMediaTracks = { audioTracks: [], subtitleTracks: [] };
+    let activeAudioTrackIndex = 0;
+
+    const quickSyncTrackBtn = document.getElementById('quickSyncTrackBtn');
+    if (quickSyncTrackBtn) {
+        quickSyncTrackBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!parsedDialogues || parsedDialogues.length === 0) {
+                showFeedback('<i class="ph-bold ph-warning"></i> Önce bir altyazı seçin', window.innerWidth / 2);
+                return;
+            }
+            fastForwardSync();
+        });
+    }
+
+    function updateTrackMenus(meta, filePath) {
+        currentLocalVideoPath = filePath || '';
+        currentMediaTracks = meta || { audioTracks: [], subtitleTracks: [] };
+        activeAudioTrackIndex = 0;
+
+        const badge = document.getElementById('activeAudioCodecBadge');
+        const audioList = document.getElementById('audioTracksList');
+        const subList = document.getElementById('subtitleTracksList');
+
+        if (!audioList || !subList) return;
+
+        // Ses Rozeti Güncelle
+        if (badge) {
+            if (meta && meta.audioTracks && meta.audioTracks.length > 0) {
+                const firstAudio = meta.audioTracks[0];
+                badge.textContent = `${(firstAudio.codec || 'SES').toUpperCase()} ${firstAudio.channels || 2}ch`;
+                badge.style.color = firstAudio.isSupported ? '#00e676' : '#ff9800';
+            } else {
+                badge.textContent = 'Varsayılan';
+                badge.style.color = '#00e676';
+            }
+        }
+
+        // Ses Parçalarını Doldur
+        audioList.innerHTML = '';
+        if (meta && meta.audioTracks && meta.audioTracks.length > 0) {
+            meta.audioTracks.forEach((track, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `menu-btn ${idx === activeAudioTrackIndex ? 'active' : ''}`;
+                btn.style.fontSize = '12px';
+                btn.style.padding = '6px 8px';
+                const tag = track.isSupported ? '' : ' <span style="font-size:10px; color:#ff9800;">(Canlı)</span>';
+                btn.innerHTML = `<i class="ph-bold ph-speaker-high"></i> ${track.title || ('Ses ' + (idx + 1))}${tag}`;
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    switchAudioTrack(track, idx);
+                };
+                audioList.appendChild(btn);
+            });
+        } else {
+            audioList.innerHTML = '<button class="menu-btn active" style="font-size: 12px; padding: 6px 8px;"><i class="ph-bold ph-speaker-high"></i> Varsayılan Ses</button>';
+        }
+
+        // Gömülü Altyazı Parçalarını Doldur
+        subList.innerHTML = `
+            <button class="menu-btn ${currentSubtitleMode === 'off' ? 'active' : ''}" id="subOffBtn" onclick="setSubtitleMode('off', this)" style="font-size: 12px; padding: 6px 8px;">
+                <i class="ph-bold ph-eye-slash"></i> Kapalı
+            </button>
+            <button class="menu-btn ${currentSubtitleMode === 'auto' ? 'active' : ''}" id="subAutoBtn" onclick="setSubtitleMode('auto', this)" style="font-size: 12px; padding: 6px 8px;">
+                <i class="ph-bold ph-sparkle"></i> Otomatik Ara
+            </button>
+        `;
+
+        if (meta && meta.subtitleTracks && meta.subtitleTracks.length > 0) {
+            meta.subtitleTracks.forEach((sub) => {
+                const subBtn = document.createElement('button');
+                subBtn.className = 'menu-btn';
+                subBtn.style.fontSize = '12px';
+                subBtn.style.padding = '6px 8px';
+                subBtn.innerHTML = `<i class="ph-bold ph-subtitles"></i> ${sub.title || 'Gömülü Altyazı'}`;
+                subBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    selectEmbeddedSubtitle(sub, subBtn);
+                };
+                subList.appendChild(subBtn);
+            });
+        }
+    }
+
+    async function switchAudioTrack(track, trackIndex) {
+        if (trackIndex === activeAudioTrackIndex) return;
+        activeAudioTrackIndex = trackIndex;
+
+        document.querySelectorAll('#audioTracksList .menu-btn').forEach((b, i) => {
+            b.classList.toggle('active', i === trackIndex);
+        });
+
+        const curTime = video.currentTime;
+        const wasPaused = video.paused;
+
+        if (window.electronAPI && typeof window.electronAPI.getTransmuxStreamUrl === 'function' && currentLocalVideoPath) {
+            showFeedback(`<i class="ph-bold ph-waveform"></i> ${track.title || 'Ses'} akışına geçiliyor...`, window.innerWidth / 2);
+            const streamUrl = await window.electronAPI.getTransmuxStreamUrl(currentLocalVideoPath, track.audioIndex, curTime);
+            if (streamUrl) {
+                video.src = streamUrl;
+                if (!wasPaused) video.play().catch(() => {});
+            }
+        }
+    }
+
+    async function selectEmbeddedSubtitle(sub, btnElement) {
+        if (window.electronAPI && typeof window.electronAPI.extractEmbeddedSubtitle === 'function' && currentLocalVideoPath) {
+            showFeedback(`<i class="ph-bold ph-download-simple"></i> Altyazı ayıklanıyor: ${sub.title}`, window.innerWidth / 2);
+            const vttText = await window.electronAPI.extractEmbeddedSubtitle(currentLocalVideoPath, sub.subtitleIndex);
+            if (vttText) {
+                const cues = SubtitleEngine.parseVttCues(vttText);
+                parsedDialogues = cues;
+                SubtitleEngine.applyToVideo(cues, video, sub.title);
+                currentSubtitleMode = 'auto';
+
+                document.querySelectorAll('#subtitleTracksList .menu-btn').forEach(b => b.classList.remove('active'));
+                if (btnElement) btnElement.classList.add('active');
+
+                showFeedback(`<i class="ph-bold ph-subtitles"></i> ${sub.title} Aktif (${cues.length} Diyalog)`, window.innerWidth / 2);
+            } else {
+                showFeedback('<i class="ph-bold ph-warning"></i> Gömülü altyazı okunamadı', window.innerWidth / 2);
+            }
+        }
+    }
 
     // =========================================================================
     // 🎙️ 4. OTONOM SES ANALİZİ VE VAD (WEB AUDIO API)
@@ -1652,6 +1803,36 @@
 
         showFeedback('<i class="ph-bold ph-folder-open"></i> Yüklendi: ' + currentMeta.displayTitle, window.innerWidth / 2);
         
+        const rawPath = file.path || '';
+        if (window.electronAPI && typeof window.electronAPI.probeMedia === 'function' && rawPath) {
+            window.electronAPI.probeMedia(rawPath).then(meta => {
+                if (meta) {
+                    updateTrackMenus(meta, rawPath);
+                    if (meta.hasUnsupportedAudio) {
+                        window.electronAPI.getTransmuxStreamUrl(rawPath, 0, 0).then(streamUrl => {
+                            if (streamUrl) {
+                                video.src = streamUrl;
+                                video.play().catch(() => {});
+                                showFeedback('<i class="ph-bold ph-waveform"></i> AC3/DTS Canlı Çözümleniyor...', window.innerWidth / 2);
+                            }
+                        });
+                    }
+                }
+            }).catch(e => console.warn('[EchoPlay] Probe hatası:', e));
+        } else if (file.name.toLowerCase().endsWith('.mkv') && typeof SubtitleEngine.parseMatroskaTracks === 'function') {
+            const slice = file.slice(0, 2 * 1024 * 1024);
+            slice.arrayBuffer().then(buf => {
+                const parsed = SubtitleEngine.parseMatroskaTracks(buf);
+                if (parsed && (parsed.audio.length || parsed.subtitle.length)) {
+                    updateTrackMenus({
+                        audioTracks: parsed.audio.map((a, i) => ({ title: a.name, codec: a.codec, isSupported: true, audioIndex: i })),
+                        subtitleTracks: parsed.subtitle.map((s, i) => ({ title: s.name, codec: s.codec, subtitleIndex: i })),
+                        hasUnsupportedAudio: false
+                    }, '');
+                }
+            }).catch(() => {});
+        }
+
         setTimeout(() => autoFetchSubtitles(currentMeta), 1000); 
     }
 
@@ -1678,6 +1859,24 @@
                 customTrack.src = '';
                 if(customTrack.track) customTrack.track.mode = 'hidden';
             }
+
+            if (window.electronAPI && typeof window.electronAPI.probeMedia === 'function' && filePath) {
+                window.electronAPI.probeMedia(filePath).then(meta => {
+                    if (meta) {
+                        updateTrackMenus(meta, filePath);
+                        if (meta.hasUnsupportedAudio) {
+                            window.electronAPI.getTransmuxStreamUrl(filePath, 0, 0).then(streamUrl => {
+                                if (streamUrl) {
+                                    video.src = streamUrl;
+                                    video.play().catch(() => {});
+                                    showFeedback('<i class="ph-bold ph-waveform"></i> AC3/DTS Canlı Çözümleniyor...', window.innerWidth / 2);
+                                }
+                            });
+                        }
+                    }
+                }).catch(e => console.warn('[EchoPlay] Probe hatası:', e));
+            }
+
             autoFetchSubtitles(currentMeta);
         });
     }
