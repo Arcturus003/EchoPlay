@@ -317,7 +317,7 @@ try {
                         switch (data.type) {
                             case Hls.ErrorTypes.NETWORK_ERROR:
                                 // fatal network error (e.g. 403 Forbidden because of missing Referer, or 404 Not Found)
-                                console.warn("HLS Network Error:", data);
+                                console.log("HLS Network Error:", data);
                                 showFeedback('<i class="ph-bold ph-warning-circle"></i> Sunucu erişimi reddetti. (Korsan koruması / 403). Lütfen sayfayı yenileyin veya farklı bir oynatıcı seçin.', window.innerWidth / 2);
                                 hls.destroy();
                                 break;

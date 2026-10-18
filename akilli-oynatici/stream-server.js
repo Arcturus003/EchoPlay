@@ -1,6 +1,22 @@
 const http = require('node:http');
 const { spawn, execFile } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
+
+function getBinaryPath(name) {
+    const ext = process.platform === 'win32' ? '.exe' : '';
+    // 1. Packaged Electron extraResources (resources/bin/<name>.exe)
+    if (process.resourcesPath) {
+        const prodPath = path.join(process.resourcesPath, 'bin', name + ext);
+        if (fs.existsSync(prodPath)) return prodPath;
+    }
+    // 2. Local development folder (__dirname/bin/<name>.exe)
+    const devPath = path.join(__dirname, 'bin', name + ext);
+    if (fs.existsSync(devPath)) return devPath;
+
+    // 3. Fallback to system PATH
+    return name;
+}
 
 let server = null;
 let serverPort = null;
@@ -12,7 +28,7 @@ function probeMedia(filePath) {
     return new Promise((resolve) => {
         if (!filePath) return resolve(null);
         
-        execFile('ffprobe', [
+        execFile(getBinaryPath('ffprobe'), [
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_streams',
@@ -81,7 +97,7 @@ function extractSubtitle(filePath, subtitleIndex) {
     return new Promise((resolve) => {
         if (!filePath || subtitleIndex === undefined) return resolve(null);
 
-        const proc = spawn('ffmpeg', [
+        const proc = spawn(getBinaryPath('ffmpeg'), [
             '-v', 'quiet',
             '-i', filePath,
             '-map', `0:s:${subtitleIndex}`,
@@ -143,7 +159,7 @@ function startServer() {
                     'Connection': 'keep-alive'
                 });
 
-                const ffmpegProc = spawn('ffmpeg', args);
+                const ffmpegProc = spawn(getBinaryPath('ffmpeg'), args);
                 activeFfmpegProcesses.add(ffmpegProc);
 
                 ffmpegProc.stdout.pipe(res);
@@ -157,16 +173,16 @@ function startServer() {
                             ffmpegProc.stdout.destroy();
                         }
                         ffmpegProc.kill('SIGKILL');
-                    } catch (e) {}
+                    } catch (e) {
+                        console.warn('[StreamServer] Process cleanup error:', e.message);
+                    }
                 };
 
                 req.on('close', cleanup);
                 res.on('finish', cleanup);
                 res.on('error', cleanup);
                 ffmpegProc.on('error', cleanup);
-                ffmpegProc.on('close', () => {
-                    activeFfmpegProcesses.delete(ffmpegProc);
-                });
+                ffmpegProc.on('close', cleanup);
             } else {
                 res.writeHead(404);
                 res.end('Not found');
@@ -188,7 +204,14 @@ function getStreamUrl(filePath, audioIndex = 0, startTime = 0) {
 
 function stopServer() {
     for (const proc of activeFfmpegProcesses) {
-        try { proc.kill('SIGKILL'); } catch (e) {}
+        try {
+            if (proc.stdout && !proc.stdout.destroyed) {
+                proc.stdout.destroy();
+            }
+            proc.kill('SIGKILL');
+        } catch (e) {
+            console.warn('[StreamServer] Process kill error:', e.message);
+        }
     }
     activeFfmpegProcesses.clear();
     if (server) {

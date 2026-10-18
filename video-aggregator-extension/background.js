@@ -1,7 +1,7 @@
 // Arka planda sekmelerde yüklenen video dosyalarını takip eder
 
 
-const StorageManager = {
+const TabManager = {
   queue: Promise.resolve(),
   
   addVideoUrl(tabId, url, type) {
@@ -14,20 +14,50 @@ const StorageManager = {
         tabVideos[tabId].push({ url, type });
         await chrome.storage.session.set({ tabVideoUrls: tabVideos });
       }
-    }).catch(console.error);
+    }).catch(err => console.log('[TabManager] addVideoUrl hatası:', err));
+  },
+
+  addRule(tabId, ruleId) {
+    this.queue = this.queue.then(async () => {
+      const result = await chrome.storage.session.get('tabRuleIds');
+      let tabRules = result.tabRuleIds || {};
+      if (!tabRules[tabId]) tabRules[tabId] = [];
+      if (!tabRules[tabId].includes(ruleId)) {
+        tabRules[tabId].push(ruleId);
+        await chrome.storage.session.set({ tabRuleIds: tabRules });
+      }
+    }).catch(err => console.log('[TabManager] addRule hatası:', err));
   },
 
   clearTab(tabId) {
     this.queue = this.queue.then(async () => {
-      const result = await chrome.storage.session.get('tabVideoUrls');
-      let tabVideos = result.tabVideoUrls || {};
+      // 1. Videoları oturum hafızasından sil
+      const vidResult = await chrome.storage.session.get('tabVideoUrls');
+      let tabVideos = vidResult.tabVideoUrls || {};
       if (tabVideos[tabId]) {
         delete tabVideos[tabId];
         await chrome.storage.session.set({ tabVideoUrls: tabVideos });
       }
-    }).catch(console.error);
+
+      // 2. Dinamik DNR kurallarını motor üzerinden kaldır, başarılı olursa hafızadan düş
+      const ruleResult = await chrome.storage.session.get('tabRuleIds');
+      let tabRules = ruleResult.tabRuleIds || {};
+      const rulesToRemove = tabRules[tabId] || [];
+      if (rulesToRemove.length > 0) {
+        if (chrome.declarativeNetRequest) {
+          await chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: rulesToRemove
+          });
+        }
+        delete tabRules[tabId];
+        await chrome.storage.session.set({ tabRuleIds: tabRules });
+      }
+    }).catch(err => console.log('[TabManager] clearTab hatası:', err));
   }
 };
+
+const StorageManager = TabManager;
+const RuleManager = TabManager;
 
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
@@ -119,8 +149,8 @@ chrome.webRequest.onHeadersReceived.addListener(
               }
             }]
           }).then(() => {
-            if (tabId !== -1) RuleManager.addRule(tabId, ruleId);
-          }).catch(console.error);
+            if (tabId !== -1) TabManager.addRule(tabId, ruleId);
+          }).catch(err => console.log('[DNR] updateDynamicRules hatası:', err));
         }
       }
     } catch(e) {}
@@ -129,52 +159,15 @@ chrome.webRequest.onHeadersReceived.addListener(
   ["responseHeaders"]
 );
 
-const RuleManager = {
-  async addRule(tabId, ruleId) {
-    try {
-      const result = await chrome.storage.session.get('tabRuleIds');
-      const tabRules = result.tabRuleIds || {};
-      if (!tabRules[tabId]) tabRules[tabId] = [];
-      if (!tabRules[tabId].includes(ruleId)) {
-        tabRules[tabId].push(ruleId);
-        await chrome.storage.session.set({ tabRuleIds: tabRules });
-      }
-    } catch (e) {
-      console.error('[RuleManager] addRule hatası:', e);
-    }
-  },
-
-  async clearRules(tabId) {
-    try {
-      const result = await chrome.storage.session.get('tabRuleIds');
-      const tabRules = result.tabRuleIds || {};
-      const rulesToRemove = tabRules[tabId] || [];
-      if (rulesToRemove.length > 0) {
-        delete tabRules[tabId];
-        await chrome.storage.session.set({ tabRuleIds: tabRules });
-        if (chrome.declarativeNetRequest) {
-          await chrome.declarativeNetRequest.updateDynamicRules({
-            removeRuleIds: rulesToRemove
-          });
-        }
-      }
-    } catch (e) {
-      console.error('[RuleManager] clearRules hatası:', e);
-    }
-  }
-};
-
 // Tab kapandığında hafızayı ve dinamik ağ kurallarını temizle
 chrome.tabs.onRemoved.addListener((tabId) => {
-  StorageManager.clearTab(tabId);
-  RuleManager.clearRules(tabId);
+  TabManager.clearTab(tabId);
 });
 
 // Tab yeni bir sayfaya gittiğinde (örn: sonraki bölüm) eski videoları ve kuralları temizle
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'loading' || changeInfo.url) {
-    StorageManager.clearTab(tabId);
-    RuleManager.clearRules(tabId);
+    TabManager.clearTab(tabId);
   }
 });
 

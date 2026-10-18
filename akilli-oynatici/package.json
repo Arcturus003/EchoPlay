@@ -25,6 +25,13 @@
       "owner": "Arcturus003",
       "repo": "EchoPlay"
     }],
+    "extraResources": [
+      {
+        "from": "bin/",
+        "to": "bin/",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": [
         "nsis",
