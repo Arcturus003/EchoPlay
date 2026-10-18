@@ -4,18 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoPlay</title>
-    <!-- Electron Module Fix for HLS.js -->
-    <script>
-      if (typeof module === 'object') {
-        window.module = module;
-        module = undefined;
-      }
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script>
-      if (window.module) module = window.module;
-    </script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="js/subtitle-engine.js"></script>
+    <script src="js/audio-sync.js"></script>
+    <script src="js/media-stream.js"></script>
     <style>
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -615,139 +608,26 @@
     }
 
     function parseVttCues(vttText) {
-        const cues = [];
-        if (!vttText) return cues;
-        const lines = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-        let i = 0;
-
-        while (i < lines.length) {
-            const line = lines[i].trim();
-            if (line.includes('-->')) {
-                const parts = line.split('-->');
-                const startTime = parseTimestamp(parts[0]);
-                const endTime = parseTimestamp(parts[1].trim().split(' ')[0]);
-
-                i++;
-                let text = "";
-                while (i < lines.length && lines[i].trim() !== "" && !lines[i].includes('-->')) {
-                    if (!/^\d+$/.test(lines[i].trim())) {
-                        text += (text ? " " : "") + lines[i].trim();
-                    }
-                    i++;
-                }
-                const cleanText = text.replace(/<[^>]+>/g, '').trim();
-                if (cleanText && !isNaN(startTime)) {
-                    cues.push({ startTime, endTime, text: cleanText });
-                }
-            } else {
-                i++;
-            }
-        }
-        
-        cues.sort((a, b) => a.startTime - b.startTime);
-        
-        // Çakışma (Overlap) Konumlandırma Algoritması
-        // Eğer bir altyazı başladığında ekranda hala başka altyazılar varsa, yenisini ekranın üstüne taşı (Anime Stili).
-        for (let j = 0; j < cues.length; j++) {
-            let activeOverlaps = 0;
-            for (let k = 0; k < j; k++) {
-                // Eğer önceki bir altyazının bitişi, yenisinin başlangıcından sonraysa ekranda hala var demektir
-                if (cues[k].endTime > cues[j].startTime) {
-                    activeOverlaps++;
-                }
-            }
-            if (activeOverlaps > 0) {
-                // Her yeni çakışma için yukarıdan %5-%10'luk yer aç
-                cues[j].line = (activeOverlaps * 5) + "%"; 
-            }
-        }
-        return cues;
-    }
-
-    function formatVttTime(seconds) {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        const ms = Math.floor((seconds % 1) * 1000);
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-    }
-
-    function generateVtt(cues) {
-        let vtt = "WEBVTT\n\n";
-        cues.forEach(c => {
-            const settings = c.line ? ` line:${c.line}` : "";
-            vtt += `${formatVttTime(c.startTime)} --> ${formatVttTime(c.endTime)}${settings}\n${c.text}\n\n`;
-        });
-        return vtt;
+        return SubtitleEngine.parseVttCues(vttText);
     }
 
     let subtitleSyncOffset = 0;
 
     function adjustSubtitleSync(deltaSeconds) {
         if (!parsedDialogues || parsedDialogues.length === 0) return;
-
         subtitleSyncOffset += deltaSeconds;
-
-        // Sadece arka plan array'ini güncelle
-        for (let i = 0; i < parsedDialogues.length; i++) {
-            parsedDialogues[i].startTime = Math.max(0, parsedDialogues[i].startTime + deltaSeconds);
-            parsedDialogues[i].endTime = Math.max(0, parsedDialogues[i].endTime + deltaSeconds);
-        }
-
-        // Native cue'ları manipüle etmek Chrome'da "ghosting" (ekranda donup kalma) bug'ı yaratır.
-        // Bu yüzden tüm altyazı track'ini sıfırdan güvenle yeniden yaratıyoruz.
+        SubtitleEngine.adjustSync(parsedDialogues, deltaSeconds);
         applySubtitle(null, 'Senkronlu Altyazı', true);
-
         const sign = subtitleSyncOffset > 0 ? '+' : '';
         showFeedback(`<i class="ph-bold ph-clock"></i> Senkron: ${sign}${subtitleSyncOffset.toFixed(1)}s`, window.innerWidth / 2);
     }
 
     function applySubtitle(vttText, label = "Türkçe", isSyncAdjustment = false) {
         if (!isSyncAdjustment) {
-            parsedDialogues = parseVttCues(vttText);
-            subtitleSyncOffset = 0; // Yeni altyazı yüklendiğinde sıfırla
+            parsedDialogues = SubtitleEngine.parseVttCues(vttText);
+            subtitleSyncOffset = 0;
         }
-        
-        // Ham dosyayı değil, çakışmalardan (overlap) arındırılmış temiz dosyayı kullan
-        const cleanVtt = generateVtt(parsedDialogues);
-        const blob = new Blob([cleanVtt], { type: 'text/vtt' });
-        const blobUrl = URL.createObjectURL(blob);
-        
-        let existingTrack = document.getElementById('subtitleTrack');
-        if (existingTrack) {
-            // BUG FIX: Track'i DOM'dan silmeden önce kesinlikle gizli moda (hidden) al!
-            // Aksi takdirde silinen elementin o anki cue'su ekranda sonsuza kadar takılı kalır (ghosting/üst üste binme).
-            if (existingTrack.track) existingTrack.track.mode = 'hidden';
-            if (existingTrack.src) URL.revokeObjectURL(existingTrack.src);
-            existingTrack.remove();
-        }
-        
-        const newTrack = document.createElement('track');
-        newTrack.id = 'subtitleTrack';
-        newTrack.label = label;
-        newTrack.kind = 'subtitles';
-        newTrack.srclang = 'tr';
-        newTrack.default = true;
-        newTrack.src = blobUrl;
-        // Track yüklendiğinde ve cue'lar parse edildiğinde tetiklenecek event
-        newTrack.onload = () => {
-            if (video.textTracks && video.textTracks.length > 0) {
-                // Diğer tüm dahili (.mkv) altyazıları gizle
-                for (let i = 0; i < video.textTracks.length; i++) {
-                    video.textTracks[i].mode = 'hidden';
-                }
-                
-                // Sadece bizim yüklediğimiz track'i göster (hardsub/off değilse)
-                if (currentSubtitleMode !== 'hardsub' && currentSubtitleMode !== 'off') {
-                    newTrack.track.mode = 'showing';
-                }
-            }
-
-            // Otomatik senkron özelliği kullanıcının isteği üzerine video yüklenişinden kaldırıldı.
-            // Sadece menüden "Otomatik Altyazı" seçildiğinde veya Senkron butonuna tıklandığında çalışacak.
-        };
-
-        video.appendChild(newTrack);
+        SubtitleEngine.applyToVideo(parsedDialogues, video, label);
     }
 
     // Oynatıcı Başladığında Otomatik Altyazı Sorgula (Arka Planda Otonom Çeker)
@@ -867,8 +747,18 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = function(evt) {
-            let content = evt.target.result;
-            if (file.name.endsWith('.srt')) {
+            const buffer = evt.target.result;
+            let content;
+            try {
+                content = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+            } catch (err) {
+                try {
+                    content = new TextDecoder('windows-1254').decode(buffer);
+                } catch (e2) {
+                    content = new TextDecoder('iso-8859-9').decode(buffer);
+                }
+            }
+            if (file.name.toLowerCase().endsWith('.srt')) {
                 content = content.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
                 content = "WEBVTT\n\n" + content;
             }
@@ -879,96 +769,20 @@
             closeAllMenus();
             showFeedback(`<i class="ph-bold ph-upload-simple"></i> Altyazı Yüklendi (${parsedDialogues.length} Diyalog)`, window.innerWidth / 2);
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
     });
 
     // =========================================================================
     // 🎙️ 4. OTONOM SES ANALİZİ VE VAD (WEB AUDIO API)
     // =========================================================================
-    let audioCtx = null;
-    let audioSourceNode = null;
-    let speakerGainNode = null;
-    let vocalFilter = null;
-    let audioAnalyser = null;
-    let isAudioEngineInitialized = false;
-
-    function initAudioEngine() {
-        if (isAudioEngineInitialized && audioCtx && audioCtx.state === 'running') return;
-        try {
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContextClass) return;
-
-            if (!audioCtx) {
-                audioCtx = new AudioContextClass();
-                audioSourceNode = audioCtx.createMediaElementSource(video);
-
-                // İnsan sesi için bandpass filtreleme (300Hz - 3400Hz)
-                vocalFilter = audioCtx.createBiquadFilter();
-                vocalFilter.type = 'bandpass';
-                vocalFilter.frequency.value = 1000;
-                vocalFilter.Q.value = 1.0;
-
-                // Spektrum Analizörü
-                audioAnalyser = audioCtx.createAnalyser();
-                audioAnalyser.fftSize = 512;
-                audioAnalyser.smoothingTimeConstant = 0.2;
-
-                // Hoparlör ses şiddeti kontrolü (Tarama sırasında cızırtıyı engellemek için)
-                speakerGainNode = audioCtx.createGain();
-                speakerGainNode.gain.value = 1;
-
-                // Bağlantılar: Hoparlör (Gain üzerinden) + Ses Analiz Hattı
-                audioSourceNode.connect(speakerGainNode);
-                speakerGainNode.connect(audioCtx.destination);
-
-                audioSourceNode.connect(vocalFilter);
-                vocalFilter.connect(audioAnalyser);
-
-                isAudioEngineInitialized = true;
-            }
-
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-        } catch (e) {
-            console.warn("Web Audio Motoru:", e);
-        }
-    }
-
     ['click', 'keydown', 'play', 'touchstart'].forEach(evt => {
-        window.addEventListener(evt, () => { initAudioEngine(); }, { once: true });
+        window.addEventListener(evt, () => { SpeechSyncEngine.init(video); }, { once: true });
     });
 
-    function getInstantAudioEnergy() {
-        if (!audioAnalyser) return 0;
-        const buffer = new Uint8Array(audioAnalyser.frequencyBinCount);
-        audioAnalyser.getByteFrequencyData(buffer);
-        let sum = 0;
-        for (let i = 0; i < buffer.length; i++) sum += buffer[i];
-        return sum / buffer.length;
-    }
-
     const vadIndicator = document.getElementById('vadIndicator');
-    function monitorVAD() {
-        if (isDialogSkipMode && audioAnalyser && !video.paused) {
-            const energy = getInstantAudioEnergy();
-            if (vadIndicator) {
-                vadIndicator.style.display = 'block';
-                if (energy > 20) {
-                    vadIndicator.style.background = '#00e676';
-                    vadIndicator.style.boxShadow = '0 0 8px #00e676';
-                } else {
-                    vadIndicator.style.background = '#666';
-                    vadIndicator.style.boxShadow = 'none';
-                }
-            }
-        } else if (vadIndicator) {
-            vadIndicator.style.display = isDialogSkipMode ? 'block' : 'none';
-            vadIndicator.style.background = '#e91e63';
-        }
-        requestAnimationFrame(monitorVAD);
+    function checkStartVAD() {
+        SpeechSyncEngine.startVAD(video, vadIndicator, isDialogSkipMode);
     }
-    requestAnimationFrame(monitorVAD);
 
     // =========================================================================
     // 🎧 AKILLI SES SENKRONU (Fast-Forward Audio-Subtitle Sync)
@@ -994,73 +808,14 @@
     async function fastForwardSync() {
         if (!parsedDialogues || parsedDialogues.length === 0 || isScanningAudio || isSeekingLock) return;
         
-        initAudioEngine();
-        
         isScanningAudio = true;
         isSeekingLock = true;
         
         const originalTime = video.currentTime;
-        const wasPlaying = !video.paused;
-
         showFeedback('<i class="ph-bold ph-magic-wand"></i> İlk Diyalog Aranıyor...', window.innerWidth / 2);
         
-        if (speakerGainNode) speakerGainNode.gain.value = 0;
-        video.playbackRate = 4;
-        
         try {
-            await video.play().catch(() => {});
-            
-            // MANUEL MOD: Kullanıcının olduğu zamandan ileriye doğru ilk konuşmayı arar.
-            let probe = originalTime;
-            let maxIter = 100; // max 150 saniye tarar
-            
-            let foundSpeechTime = null;
-            let iterations = 0;
-
-            while (iterations < maxIter) {
-                iterations++;
-                probe += 1.5;
-                if (probe >= video.duration || probe >= originalTime + 180) break;
-                
-                video.currentTime = probe;
-                await new Promise(r => video.addEventListener('seeked', r, { once: true }));
-                await new Promise(r => setTimeout(r, 40));
-
-                const energy = getInstantAudioEnergy();
-                if (energy > 18) {
-                    // POTANSİYEL SES BULUNDU. PEKİ BU GERÇEKTEN BİR İNSAN DİYALOĞU MU? (Müzik/Gürültü Koruması)
-                    let isDialogue = false;
-                    let energies = [];
-                    
-                    // Sesi yarım saniye boyunca detaylı analiz et (Hece boşluklarını ara)
-                    for (let j = 0; j < 25; j++) {
-                        energies.push(getInstantAudioEnergy());
-                        await new Promise(r => setTimeout(r, 20));
-                    }
-                    
-                    let avg = energies.reduce((a, b) => a + b, 0) / energies.length;
-                    let drops = 0;
-                    
-                    // İnsan konuşmasında nefes ve sessiz harf boşlukları olur (mikro enerji düşüşleri)
-                    // Müzik ve stüdyo jeneriklerinde ise enerji genelde sürekli yüksek seyreder.
-                    for (let k = 1; k < energies.length; k++) {
-                        if (energies[k - 1] > avg && energies[k] < avg * 0.7) {
-                            drops++;
-                        }
-                    }
-                    
-                    if (drops >= 1) {
-                        isDialogue = true; // Heceleme tespit edildi -> İnsan Sesi
-                    } else {
-                        console.log(`[SmartSync] ${probe.toFixed(1)}s'deki ses sürekli/müzik olarak reddedildi.`);
-                    }
-
-                    if (isDialogue) {
-                        foundSpeechTime = probe;
-                        break;
-                    }
-                }
-            }
+            const foundSpeechTime = await SpeechSyncEngine.findFirstDialogue(video, originalTime, 180);
 
             if (foundSpeechTime !== null) {
                 let targetSub = parsedDialogues.find(sub => sub.startTime >= originalTime);
@@ -1069,8 +824,7 @@
                 const firstSubTime = targetSub ? targetSub.startTime : parsedDialogues[0].startTime;
                 const offset = foundSpeechTime - firstSubTime;
                 if (Math.abs(offset) > 0.5) {
-                    const delta = offset;
-                    adjustSubtitleSync(delta);
+                    adjustSubtitleSync(offset);
                     showFeedback(`<i class="ph-bold ph-check-circle"></i> Sese Kilitlendi! (${offset > 0 ? '+' : ''}${offset.toFixed(1)}s)`, window.innerWidth / 2);
                 } else {
                     showFeedback(`<i class="ph-bold ph-check"></i> Zaten Sese Uygun`, window.innerWidth / 2);
@@ -1078,18 +832,9 @@
             } else {
                 showFeedback(`<i class="ph-bold ph-warning"></i> Diyalog Bulunamadı`, window.innerWidth / 2);
             }
-
         } catch (err) {
             console.error("FastForward Sync Hatası:", err);
         } finally {
-            video.playbackRate = 1;
-            if (speakerGainNode) speakerGainNode.gain.value = 1;
-            
-            video.currentTime = originalTime;
-            
-            if (wasPlaying) await video.play().catch(() => {});
-            else video.pause();
-            
             setTimeout(() => {
                 isScanningAudio = false;
                 isSeekingLock = false;
@@ -1107,10 +852,12 @@
             dialogSkipToggle.style.color = '#e91e63';
             dialogSkipToggle.title = 'Akıllı Diyalog & Ses Atlama (Açık)';
             showFeedback('<i class="ph-bold ph-quotes"></i> Diyalog Atlama Açık', window.innerWidth / 2);
+            checkStartVAD();
         } else {
             dialogSkipToggle.style.color = '';
             dialogSkipToggle.title = 'Akıllı Diyalog & Ses Atlama (Kapalı)';
             showFeedback('<i class="ph-bold ph-quotes"></i> Diyalog Atlama Kapalı', window.innerWidth / 2);
+            checkStartVAD();
         }
         resetIdleTimer();
     });
@@ -1342,6 +1089,7 @@
     video.addEventListener('play', () => {
         playPauseBtn.innerHTML = '<i class="ph-fill ph-pause"></i>';
         bigPlayBtn.style.display = 'none'; 
+        checkStartVAD();
         resetIdleTimer();
     });
     
@@ -1350,6 +1098,7 @@
         bigPlayBtn.style.display = 'flex'; 
         videoWrapper.classList.remove('idle');
         clearTimeout(idleTimer);
+        checkStartVAD();
     });
 
     video.addEventListener('error', () => {
@@ -1685,14 +1434,13 @@
     const pipBtn = document.getElementById('pipBtn');
     pipBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        try {
-            const { ipcRenderer } = require('electron');
-            ipcRenderer.send('toggle-pip');
-        } catch (err) {
+        if (window.electronAPI && typeof window.electronAPI.togglePiP === 'function') {
+            window.electronAPI.togglePiP();
+        } else {
             // Electron yoksa (mobil/web) standart PiP API kullan
             try {
                 if (document.pictureInPictureElement) await document.exitPictureInPicture();
-                else await video.requestPictureInPicture();
+                else if (video.requestPictureInPicture) await video.requestPictureInPicture();
             } catch (e2) { console.error("PiP Hatası:", e2); }
         }
     });
@@ -1878,13 +1626,12 @@
         videoSrc = fileUrl;
         
         if (file.name.toLowerCase().endsWith(".m3u8")) {
-            // Electron'da file.path gerçek dosya yolunu verir
-            // hls.js blob URL'leri okuyamaz, gerçek yol lazım
-            const realPath = file.path ? ('file:///' + file.path.replace(/\\/g, '/')) : fileUrl;
-            videoSrc = realPath;
-            loadMediaSource(realPath);
+            const rawPath = file.path || '';
+            const safeUrl = window.electronAPI && rawPath ? window.electronAPI.toFileUrl(rawPath) : fileUrl;
+            videoSrc = safeUrl;
+            loadMediaSource(safeUrl, rawPath);
         } else {
-            loadMediaSource(fileUrl);
+            loadMediaSource(fileUrl, file.path || '');
         }
         
         currentMeta = detectVideoMetadata(file.name);
@@ -1908,20 +1655,19 @@
         setTimeout(() => autoFetchSubtitles(currentMeta), 1000); 
     }
 
-    try {
-        const { ipcRenderer } = require('electron');
-        ipcRenderer.on('open-external-file', (event, filePath) => {
+    if (window.electronAPI && typeof window.electronAPI.onOpenExternalFile === 'function') {
+        window.electronAPI.onOpenExternalFile((filePath) => {
             document.getElementById('splashScreen').style.display = 'none';
             document.getElementById('bigPlayBtn').style.display = 'none';
             
-            const fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
+            const fileUrl = window.electronAPI.toFileUrl ? window.electronAPI.toFileUrl(filePath) : ('file:///' + filePath.replace(/\\/g, '/'));
             videoSrc = fileUrl;
             
             const fileName = filePath.split('\\').pop().split('/').pop();
             currentMeta = detectVideoMetadata(fileName);
             document.getElementById('videoTitle').textContent = currentMeta.displayTitle;
             
-            loadMediaSource(fileUrl);
+            loadMediaSource(fileUrl, filePath);
             
             parsedDialogues = [];
             if (video.textTracks && video.textTracks.length > 0) {
@@ -1934,114 +1680,14 @@
             }
             autoFetchSubtitles(currentMeta);
         });
-    } catch(e) {}
+    }
 
     // YARDIMCI FONKSİYON: HLS ve Normal Video Ayrımı
-    function loadMediaSource(url) {
-        const isM3u8 = url.toLowerCase().includes('.m3u8') || url.toLowerCase().includes('m3u8');
-        
-        if (isM3u8) {
-            if (window.hlsInstance) { window.hlsInstance.destroy(); window.hlsInstance = null; }
-            
-            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                // file:// protokolünden gelen m3u8 dosyalarını Node.js ile oku
-                // ve içindeki göreceli (relative) linkleri mutlak (absolute) linklere çevir
-                if (url.startsWith('file:///')) {
-                    try {
-                        const fs = require('fs');
-                        const path = require('path');
-                        const filePath = decodeURIComponent(url.replace('file:///', ''));
-                        const content = fs.readFileSync(filePath, 'utf8');
-                        const dir = path.dirname(filePath);
-                        
-                        // İçindeki göreceli yolları mutlak file:// yollarına çevir
-                        const fixedContent = content.split('\n').map(line => {
-                            line = line.trim();
-                            if (line && !line.startsWith('#') && !line.startsWith('http')) {
-                                // Bu bir göreceli dosya yolu, mutlak yap
-                                return 'file:///' + path.join(dir, line).replace(/\\/g, '/');
-                            }
-                            return line;
-                        }).join('\n');
-                        
-                        // Data URI olarak hls.js'ye ver
-                        const dataUri = 'data:application/vnd.apple.mpegurl;base64,' + 
-                            Buffer.from(fixedContent).toString('base64');
-                        
-                        window.hlsInstance = new Hls();
-                        window.hlsInstance.loadSource(dataUri);
-                        window.hlsInstance.attachMedia(video);
-                        window.hlsInstance.on(Hls.Events.MANIFEST_PARSED, onHlsManifest);
-                        window.hlsInstance.on(Hls.Events.ERROR, function(event, data) {
-                            if (data.fatal) {
-                                switch (data.type) {
-                                    case Hls.ErrorTypes.NETWORK_ERROR:
-                                        console.warn('[HLS Ağ Hatası]', data);
-                                        showFeedback('<i class="ph-bold ph-warning-circle"></i> M3U8 ağ hatası', window.innerWidth / 2);
-                                        window.hlsInstance.destroy();
-                                        break;
-                                    case Hls.ErrorTypes.MEDIA_ERROR:
-                                        console.log('[HLS Media Hatası] Kurtarılıyor...', data);
-                                        window.hlsInstance.recoverMediaError();
-                                        break;
-                                    default:
-                                        window.hlsInstance.destroy();
-                                        break;
-                                }
-                            }
-                        });
-                    } catch(e) {
-                        console.error('[M3U8 Dosya Okuma Hatası]', e);
-                        // Fallback: doğrudan dene
-                        window.hlsInstance = new Hls();
-                        window.hlsInstance.loadSource(url);
-                        window.hlsInstance.attachMedia(video);
-                        window.hlsInstance.on(Hls.Events.MANIFEST_PARSED, onHlsManifest);
-                        window.hlsInstance.on(Hls.Events.ERROR, function(event, data) {
-                            if (data.fatal) {
-                                if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                                    window.hlsInstance.recoverMediaError();
-                                } else {
-                                    showFeedback('<i class="ph-bold ph-warning-circle"></i> HLS Hatası', window.innerWidth / 2);
-                                    window.hlsInstance.destroy();
-                                }
-                            }
-                        });
-                    }
-                } else {
-                    // HTTP(S) üzerinden gelen normal m3u8 (Chrome eklentisi gibi)
-                    window.hlsInstance = new Hls();
-                    window.hlsInstance.loadSource(url);
-                    window.hlsInstance.attachMedia(video);
-                    window.hlsInstance.on(Hls.Events.MANIFEST_PARSED, onHlsManifest);
-                    window.hlsInstance.on(Hls.Events.ERROR, function(event, data) {
-                        if (data.fatal) {
-                            switch (data.type) {
-                                case Hls.ErrorTypes.NETWORK_ERROR:
-                                    console.warn('HLS Network Error:', data);
-                                    showFeedback('<i class="ph-bold ph-warning-circle"></i> Sunucu erişimi reddetti (403/Ağ Hatası)', window.innerWidth / 2);
-                                    window.hlsInstance.destroy();
-                                    break;
-                                case Hls.ErrorTypes.MEDIA_ERROR:
-                                    console.log('HLS Media Error, recovering...', data);
-                                    window.hlsInstance.recoverMediaError();
-                                    break;
-                                default:
-                                    window.hlsInstance.destroy();
-                                    break;
-                            }
-                        }
-                    });
-                }
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = url;
-                video.play().catch(e => console.log('Native HLS hatası:', e));
-            }
-        } else {
-            video.removeAttribute('crossorigin');
-            video.src = url;
-            video.play().catch(e => console.log('Oynatma hatası:', e));
-        }
+    function loadMediaSource(url, localFilePath = '') {
+        MediaStreamAdapter.load(video, url, localFilePath, {
+            onFeedback: (html) => showFeedback(html, window.innerWidth / 2),
+            onManifestParsed: (levels) => onHlsManifest(null, { levels })
+        });
     }
     
     function onHlsManifest(event, data) {

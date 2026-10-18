@@ -118,6 +118,8 @@ chrome.webRequest.onHeadersReceived.addListener(
                 resourceTypes: ["xmlhttprequest", "media"]
               }
             }]
+          }).then(() => {
+            if (tabId !== -1) addTabRule(tabId, ruleId);
           }).catch(console.error);
         }
       }
@@ -127,14 +129,34 @@ chrome.webRequest.onHeadersReceived.addListener(
   ["responseHeaders"]
 );
 
-// Tab kapandığında hafızayı temizle
+const tabRuleIds = new Map();
+function addTabRule(tabId, ruleId) {
+  if (!tabRuleIds.has(tabId)) tabRuleIds.set(tabId, new Set());
+  tabRuleIds.get(tabId).add(ruleId);
+}
+
+function clearTabRules(tabId) {
+  if (tabRuleIds.has(tabId)) {
+    const rulesToRemove = Array.from(tabRuleIds.get(tabId));
+    tabRuleIds.delete(tabId);
+    if (chrome.declarativeNetRequest && rulesToRemove.length > 0) {
+      chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: rulesToRemove
+      }).catch(console.error);
+    }
+  }
+}
+
+// Tab kapandığında hafızayı ve dinamik ağ kurallarını temizle
 chrome.tabs.onRemoved.addListener((tabId) => {
   StorageManager.clearTab(tabId);
+  clearTabRules(tabId);
 });
 
-// Tab yeni bir sayfaya gittiğinde (örn: sonraki bölüm) eski videoları temizle
+// Tab yeni bir sayfaya gittiğinde (örn: sonraki bölüm) eski videoları ve kuralları temizle
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'loading' || changeInfo.url) {
     StorageManager.clearTab(tabId);
+    clearTabRules(tabId);
   }
 });
