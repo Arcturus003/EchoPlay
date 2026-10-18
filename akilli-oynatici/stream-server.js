@@ -23,6 +23,7 @@ let serverPort = null;
 let activeFfmpegProcesses = new Set();
 
 const SUPPORTED_AUDIO_CODECS = new Set(['aac', 'mp3', 'opus', 'vorbis', 'flac', 'wav']);
+const SUPPORTED_VIDEO_CODECS = new Set(['h264', 'avc1', 'vp8', 'vp9', 'av1']);
 
 function probeMedia(filePath) {
     return new Promise((resolve) => {
@@ -47,9 +48,12 @@ function probeMedia(filePath) {
                 const audioTracks = [];
                 let subtitleIndex = 0;
                 const subtitleTracks = [];
+                let videoCodec = '';
 
                 for (const s of streams) {
-                    if (s.codec_type === 'audio') {
+                    if (s.codec_type === 'video' && !videoCodec) {
+                        videoCodec = (s.codec_name || '').toLowerCase();
+                    } else if (s.codec_type === 'audio') {
                         const codec = (s.codec_name || '').toLowerCase();
                         const lang = s.tags?.language || 'und';
                         const title = s.tags?.title || `Ses ${audioIndex + 1} (${lang.toUpperCase()})`;
@@ -78,12 +82,19 @@ function probeMedia(filePath) {
                     }
                 }
 
+                const isSupportedVideo = SUPPORTED_VIDEO_CODECS.has(videoCodec);
+                const needsVideoTranscode = videoCodec === 'hevc' || videoCodec === 'h265' || (!isSupportedVideo && !!videoCodec);
                 const hasUnsupportedAudio = audioTracks.length > 0 && !audioTracks[0].isSupported;
+                const needsTransmux = hasUnsupportedAudio || needsVideoTranscode;
+
                 resolve({
                     duration: parseFloat(data.format?.duration) || 0,
+                    videoCodec,
+                    needsVideoTranscode,
+                    hasUnsupportedAudio,
+                    needsTransmux,
                     audioTracks,
-                    subtitleTracks,
-                    hasUnsupportedAudio
+                    subtitleTracks
                 });
             } catch (parseErr) {
                 console.error('[StreamServer] probe json parse hatası:', parseErr);
@@ -106,13 +117,70 @@ function extractSubtitle(filePath, subtitleIndex) {
         ]);
 
         let vtt = '';
-        proc.stdout.on('data', chunk => { vtt += chunk.toString(); });
+        proc.stdout.on('data', chunk => { vtt += chunk.toString('utf8'); });
         proc.on('close', (code) => {
             if (code === 0 && vtt.trim()) {
                 resolve(vtt);
             } else {
                 resolve(null);
             }
+        });
+        proc.on('error', () => resolve(null));
+    });
+}
+
+function detectSpeechOnset(filePath, startTime = 0, duration = 15) {
+    return new Promise((resolve) => {
+        if (!filePath) return resolve(null);
+        const proc = spawn(getBinaryPath('ffmpeg'), [
+            '-v', 'quiet',
+            '-ss', startTime.toString(),
+            '-t', duration.toString(),
+            '-i', filePath,
+            '-vn',
+            '-af', 'highpass=f=500,lowpass=f=2500',
+            '-ac', '1',
+            '-ar', '16000',
+            '-f', 's16le',
+            'pipe:1'
+        ]);
+
+        const chunks = [];
+        proc.stdout.on('data', chunk => chunks.push(chunk));
+        proc.on('close', (code) => {
+            if (code !== 0 || chunks.length === 0) return resolve(null);
+            const buf = Buffer.concat(chunks);
+            const samples = new Int16Array(buf.buffer, buf.byteOffset, Math.floor(buf.length / 2));
+            const winSize = 1600; // 100ms
+            const energies = [];
+            for (let i = 0; i < samples.length; i += winSize) {
+                let sum = 0;
+                const limit = Math.min(samples.length, i + winSize);
+                for (let j = i; j < limit; j++) sum += Math.abs(samples[j]);
+                energies.push(sum / (limit - i));
+            }
+
+            if (energies.length === 0) return resolve(null);
+
+            // Yerel enerji sıçramasını (konuşma burst'unu) tespit et
+            for (let k = 3; k < energies.length - 2; k++) {
+                const localBaseline = (energies[k - 3] + energies[k - 2] + energies[k - 1]) / 3;
+                if (energies[k] > localBaseline * 1.35 && energies[k + 1] > localBaseline * 1.35 && energies[k] > 700) {
+                    const onset = startTime + (k * winSize) / 16000;
+                    return resolve(onset);
+                }
+            }
+
+            // Fallback: mutlak tepe noktası
+            let maxE = 0;
+            let bestK = 0;
+            for (let k = 0; k < energies.length; k++) {
+                if (energies[k] > maxE) {
+                    maxE = energies[k];
+                    bestK = k;
+                }
+            }
+            resolve(startTime + (bestK * winSize) / 16000);
         });
         proc.on('error', () => resolve(null));
     });
@@ -129,6 +197,7 @@ function startServer() {
                 const filePath = reqUrl.searchParams.get('file');
                 const audioIndex = parseInt(reqUrl.searchParams.get('audio') || '0', 10);
                 const startTime = parseFloat(reqUrl.searchParams.get('start') || '0');
+                const transcodeVideo = reqUrl.searchParams.get('transcodeVideo') === '1';
 
                 if (!filePath) {
                     res.writeHead(400);
@@ -139,14 +208,21 @@ function startServer() {
                 if (startTime > 0) {
                     args.push('-ss', startTime.toFixed(3));
                 }
+                args.push('-i', filePath);
+                args.push('-map', '0:v:0');
+                args.push('-map', `0:a:${audioIndex}`);
+
+                if (transcodeVideo) {
+                    args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p');
+                } else {
+                    args.push('-c:v', 'copy');
+                }
+
                 args.push(
-                    '-i', filePath,
-                    '-map', '0:v:0',
-                    '-map', `0:a:${audioIndex}`,
-                    '-c:v', 'copy',
                     '-c:a', 'aac',
                     '-b:a', '192k',
                     '-ac', '2',
+                    '-strict', '-2',
                     '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
                     '-f', 'mp4',
                     'pipe:1'
@@ -197,9 +273,9 @@ function startServer() {
     });
 }
 
-function getStreamUrl(filePath, audioIndex = 0, startTime = 0) {
+function getStreamUrl(filePath, audioIndex = 0, startTime = 0, transcodeVideo = false) {
     if (!serverPort) return null;
-    return `http://127.0.0.1:${serverPort}/stream?file=${encodeURIComponent(filePath)}&audio=${audioIndex}&start=${startTime}&t=${Date.now()}`;
+    return `http://127.0.0.1:${serverPort}/stream?file=${encodeURIComponent(filePath)}&audio=${audioIndex}&start=${startTime}&transcodeVideo=${transcodeVideo ? 1 : 0}&t=${Date.now()}`;
 }
 
 function stopServer() {
@@ -226,5 +302,7 @@ module.exports = {
     stopServer,
     probeMedia,
     extractSubtitle,
+    detectSpeechOnset,
     getStreamUrl
 };
+

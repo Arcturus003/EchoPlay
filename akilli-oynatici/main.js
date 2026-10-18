@@ -92,13 +92,18 @@ if (!gotTheLock) {
     return await streamServer.probeMedia(filePath);
   });
 
-  ipcMain.handle('get-transmux-url', async (_event, filePath, audioIndex, startTime) => {
-    return streamServer.getStreamUrl(filePath, audioIndex, startTime);
+  ipcMain.handle('get-transmux-url', async (_event, filePath, audioIndex, startTime, transcodeVideo) => {
+    return streamServer.getStreamUrl(filePath, audioIndex, startTime, transcodeVideo);
   });
 
   ipcMain.handle('extract-embedded-subtitle', async (_event, filePath, subtitleIndex) => {
     return await streamServer.extractSubtitle(filePath, subtitleIndex);
   });
+
+  ipcMain.handle('detect-speech-onset', async (_event, filePath, startTime, duration) => {
+    return await streamServer.detectSpeechOnset(filePath, startTime, duration);
+  });
+
 
   let isMini = false;
   let oldBounds = null;

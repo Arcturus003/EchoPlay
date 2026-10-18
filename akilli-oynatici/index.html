@@ -895,7 +895,8 @@
 
         if (window.electronAPI && typeof window.electronAPI.getTransmuxStreamUrl === 'function' && currentLocalVideoPath) {
             showFeedback(`<i class="ph-bold ph-waveform"></i> ${track.title || 'Ses'} akışına geçiliyor...`, window.innerWidth / 2);
-            const streamUrl = await window.electronAPI.getTransmuxStreamUrl(currentLocalVideoPath, track.audioIndex, curTime);
+            const transcodeVideo = currentMediaTracks ? currentMediaTracks.needsVideoTranscode : false;
+            const streamUrl = await window.electronAPI.getTransmuxStreamUrl(currentLocalVideoPath, track.audioIndex, curTime, transcodeVideo);
             if (streamUrl) {
                 video.src = streamUrl;
                 if (!wasPaused) video.play().catch(() => {});
@@ -924,15 +925,16 @@
     }
 
     // =========================================================================
-    // 🎙️ 4. OTONOM SES ANALİZİ VE VAD (WEB AUDIO API)
+    // 🎙️ 4. OTONOM SES ANALİZİ VE VAD (WEB AUDIO API - Sadece İstenildiğinde)
     // =========================================================================
-    ['click', 'keydown', 'play', 'touchstart'].forEach(evt => {
-        window.addEventListener(evt, () => { SpeechSyncEngine.init(video); }, { once: true });
-    });
-
     const vadIndicator = document.getElementById('vadIndicator');
     function checkStartVAD() {
-        SpeechSyncEngine.startVAD(video, vadIndicator, isDialogSkipMode);
+        if (isDialogSkipMode) {
+            SpeechSyncEngine.init(video);
+            SpeechSyncEngine.startVAD(video, vadIndicator, isDialogSkipMode);
+        } else {
+            SpeechSyncEngine.stopVAD(vadIndicator);
+        }
     }
 
     // =========================================================================
@@ -966,15 +968,20 @@
         showFeedback('<i class="ph-bold ph-magic-wand"></i> İlk Diyalog Aranıyor...', window.innerWidth / 2);
         
         try {
-            const foundSpeechTime = await SpeechSyncEngine.findFirstDialogue(video, originalTime, 180);
+            let foundSpeechTime = null;
+            if (window.electronAPI && typeof window.electronAPI.detectSpeechOnset === 'function' && currentLocalVideoPath) {
+                foundSpeechTime = await window.electronAPI.detectSpeechOnset(currentLocalVideoPath, originalTime, 30);
+            } else {
+                foundSpeechTime = await SpeechSyncEngine.findFirstDialogue(video, originalTime, 60);
+            }
 
             if (foundSpeechTime !== null) {
                 let targetSub = parsedDialogues.find(sub => sub.startTime >= originalTime);
-                if (!targetSub) targetSub = parsedDialogues[parsedDialogues.length - 1];
+                if (!targetSub) targetSub = parsedDialogues[0];
                 
                 const firstSubTime = targetSub ? targetSub.startTime : parsedDialogues[0].startTime;
                 const offset = foundSpeechTime - firstSubTime;
-                if (Math.abs(offset) > 0.5) {
+                if (Math.abs(offset) > 0.4) {
                     adjustSubtitleSync(offset);
                     showFeedback(`<i class="ph-bold ph-check-circle"></i> Sese Kilitlendi! (${offset > 0 ? '+' : ''}${offset.toFixed(1)}s)`, window.innerWidth / 2);
                 } else {
@@ -992,6 +999,7 @@
             }, 100);
         }
     }
+
 
     let isDialogSkipMode = false;
     const dialogSkipToggle = document.getElementById('dialogSkipToggle');
@@ -1706,6 +1714,19 @@
                 e.preventDefault(); 
                 fullScreenBtn.click();
                 break;
+            case 'KeyO':
+                e.preventDefault();
+                const videoInput = document.getElementById('localVideoInput');
+                if (videoInput) videoInput.click();
+                break;
+            case 'KeyP':
+                e.preventDefault();
+                if (window.electronAPI && typeof window.electronAPI.togglePiP === 'function') {
+                    window.electronAPI.togglePiP();
+                } else if (pipBtn) {
+                    pipBtn.click();
+                }
+                break;
         }
     });
 
@@ -1746,22 +1767,38 @@
         });
     }
 
-    // Drag & Drop
-    videoWrapper.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        videoWrapper.style.boxShadow = 'inset 0 0 50px rgba(233, 30, 99, 0.5)';
+    // Drag & Drop (Pencere geneli ve kapsayıcı)
+    ['dragenter', 'dragover'].forEach(eventType => {
+        window.addEventListener(eventType, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            videoWrapper.style.boxShadow = 'inset 0 0 50px rgba(233, 30, 99, 0.5)';
+        });
     });
-    videoWrapper.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        videoWrapper.style.boxShadow = 'none';
+
+    ['dragleave', 'drop'].forEach(eventType => {
+        window.addEventListener(eventType, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            videoWrapper.style.boxShadow = 'none';
+        });
     });
-    videoWrapper.addEventListener("drop", (e) => {
+
+    window.addEventListener("drop", (e) => {
         e.preventDefault();
+        e.stopPropagation();
         videoWrapper.style.boxShadow = "none";
-        const file = e.dataTransfer.files[0];
-        if (file && (file.type.startsWith("video/") || file.name.endsWith(".m3u8") || file.name.endsWith(".mkv"))) {
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+
+        const name = (file.name || '').toLowerCase();
+        const isVideo = (file.type && file.type.startsWith("video/")) || 
+            ['.mp4', '.mkv', '.webm', '.m3u8', '.avi', '.mov', '.ts', '.flv', '.m4v'].some(ext => name.endsWith(ext));
+        const isSub = ['.srt', '.vtt'].some(ext => name.endsWith(ext));
+
+        if (isVideo) {
             loadUserVideo(file);
-        } else if (file && (file.name.endsWith(".srt") || file.name.endsWith(".vtt"))) {
+        } else if (isSub) {
             const dt = new DataTransfer();
             dt.items.add(file);
             document.getElementById("subFileInput").files = dt.files;
@@ -1773,16 +1810,20 @@
         document.getElementById("splashScreen").style.display = "none";
         document.getElementById("bigPlayBtn").style.display = "none";
         
+        const rawPath = (window.electronAPI && typeof window.electronAPI.getPathForFile === 'function')
+            ? window.electronAPI.getPathForFile(file)
+            : (file.path || '');
+
         const fileUrl = URL.createObjectURL(file);
         videoSrc = fileUrl;
         
-        if (file.name.toLowerCase().endsWith(".m3u8")) {
-            const rawPath = file.path || '';
+        const nameLower = (file.name || '').toLowerCase();
+        if (nameLower.endsWith(".m3u8")) {
             const safeUrl = window.electronAPI && rawPath ? window.electronAPI.toFileUrl(rawPath) : fileUrl;
             videoSrc = safeUrl;
             loadMediaSource(safeUrl, rawPath);
         } else {
-            loadMediaSource(fileUrl, file.path || '');
+            loadMediaSource(fileUrl, rawPath);
         }
         
         currentMeta = detectVideoMetadata(file.name);
@@ -1803,17 +1844,19 @@
 
         showFeedback('<i class="ph-bold ph-folder-open"></i> Yüklendi: ' + currentMeta.displayTitle, window.innerWidth / 2);
         
-        const rawPath = file.path || '';
         if (window.electronAPI && typeof window.electronAPI.probeMedia === 'function' && rawPath) {
             window.electronAPI.probeMedia(rawPath).then(meta => {
                 if (meta) {
                     updateTrackMenus(meta, rawPath);
-                    if (meta.hasUnsupportedAudio) {
-                        window.electronAPI.getTransmuxStreamUrl(rawPath, 0, 0).then(streamUrl => {
+                    if (meta.needsTransmux) {
+                        window.electronAPI.getTransmuxStreamUrl(rawPath, 0, 0, meta.needsVideoTranscode).then(streamUrl => {
                             if (streamUrl) {
                                 video.src = streamUrl;
                                 video.play().catch(() => {});
-                                showFeedback('<i class="ph-bold ph-waveform"></i> AC3/DTS Canlı Çözümleniyor...', window.innerWidth / 2);
+                                const msg = meta.needsVideoTranscode
+                                    ? '<i class="ph-bold ph-lightning"></i> HEVC Canlı Çözümleniyor...'
+                                    : '<i class="ph-bold ph-waveform"></i> AC3/DTS Canlı Çözümleniyor...';
+                                showFeedback(msg, window.innerWidth / 2);
                             }
                         });
                     }
@@ -1827,7 +1870,8 @@
                     updateTrackMenus({
                         audioTracks: parsed.audio.map((a, i) => ({ title: a.name, codec: a.codec, isSupported: true, audioIndex: i })),
                         subtitleTracks: parsed.subtitle.map((s, i) => ({ title: s.name, codec: s.codec, subtitleIndex: i })),
-                        hasUnsupportedAudio: false
+                        hasUnsupportedAudio: false,
+                        needsTransmux: false
                     }, '');
                 }
             }).catch(() => {});
@@ -1864,12 +1908,15 @@
                 window.electronAPI.probeMedia(filePath).then(meta => {
                     if (meta) {
                         updateTrackMenus(meta, filePath);
-                        if (meta.hasUnsupportedAudio) {
-                            window.electronAPI.getTransmuxStreamUrl(filePath, 0, 0).then(streamUrl => {
+                        if (meta.needsTransmux) {
+                            window.electronAPI.getTransmuxStreamUrl(filePath, 0, 0, meta.needsVideoTranscode).then(streamUrl => {
                                 if (streamUrl) {
                                     video.src = streamUrl;
                                     video.play().catch(() => {});
-                                    showFeedback('<i class="ph-bold ph-waveform"></i> AC3/DTS Canlı Çözümleniyor...', window.innerWidth / 2);
+                                    const msg = meta.needsVideoTranscode
+                                        ? '<i class="ph-bold ph-lightning"></i> HEVC Canlı Çözümleniyor...'
+                                        : '<i class="ph-bold ph-waveform"></i> AC3/DTS Canlı Çözümleniyor...';
+                                    showFeedback(msg, window.innerWidth / 2);
                                 }
                             });
                         }
